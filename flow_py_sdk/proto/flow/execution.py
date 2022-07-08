@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from typing import List
 
 import betterproto
+import grpclib
 
-from ..flow import entities
+from .flow import entities
 
 
 @dataclass
@@ -67,10 +68,56 @@ class GetTransactionResultRequest(betterproto.Message):
 
 
 @dataclass
+class GetTransactionByIndexRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+    index: int = betterproto.uint32_field(2)
+
+
+@dataclass
 class GetTransactionResultResponse(betterproto.Message):
     status_code: int = betterproto.uint32_field(1)
     error_message: str = betterproto.string_field(2)
     events: List[entities.Event] = betterproto.message_field(3)
+
+
+@dataclass
+class GetTransactionsByBlockIDRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class GetTransactionResultsResponse(betterproto.Message):
+    transaction_results: List[
+        "GetTransactionResultResponse"
+    ] = betterproto.message_field(1)
+
+
+@dataclass
+class GetRegisterAtBlockIDRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+    register_owner: bytes = betterproto.bytes_field(2)
+    # bytes register_controller = 3; @deprecated
+    register_key: bytes = betterproto.bytes_field(4)
+
+
+@dataclass
+class GetRegisterAtBlockIDResponse(betterproto.Message):
+    value: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class GetLatestBlockHeaderRequest(betterproto.Message):
+    is_sealed: bool = betterproto.bool_field(1)
+
+
+@dataclass
+class GetBlockHeaderByIDRequest(betterproto.Message):
+    id: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class BlockHeaderResponse(betterproto.Message):
+    block: entities.BlockHeader = betterproto.message_field(1)
 
 
 class ExecutionAPIStub(betterproto.ServiceStub):
@@ -154,4 +201,90 @@ class ExecutionAPIStub(betterproto.ServiceStub):
             "/flow.execution.ExecutionAPI/GetTransactionResult",
             request,
             GetTransactionResultResponse,
+        )
+
+    async def get_transaction_result_by_index(
+        self, *, block_id: bytes = b"", index: int = 0
+    ) -> GetTransactionResultResponse:
+        """
+        GetTransactionResultByIndex gets the result of a transaction at the
+        index .
+        """
+
+        request = GetTransactionByIndexRequest()
+        request.block_id = block_id
+        request.index = index
+
+        return await self._unary_unary(
+            "/flow.execution.ExecutionAPI/GetTransactionResultByIndex",
+            request,
+            GetTransactionResultResponse,
+        )
+
+    async def get_transaction_results_by_block_i_d(
+        self, *, block_id: bytes = b""
+    ) -> GetTransactionResultsResponse:
+        """
+        GetTransactionResultByIndex gets the results of all transactions in the
+        block ordered by transaction index
+        """
+
+        request = GetTransactionsByBlockIDRequest()
+        request.block_id = block_id
+
+        return await self._unary_unary(
+            "/flow.execution.ExecutionAPI/GetTransactionResultsByBlockID",
+            request,
+            GetTransactionResultsResponse,
+        )
+
+    async def get_register_at_block_i_d(
+        self,
+        *,
+        block_id: bytes = b"",
+        register_owner: bytes = b"",
+        register_key: bytes = b"",
+    ) -> GetRegisterAtBlockIDResponse:
+        """
+        GetRegisterAtBlockID collects a register at the block with the given ID
+        (if available).
+        """
+
+        request = GetRegisterAtBlockIDRequest()
+        request.block_id = block_id
+        request.register_owner = register_owner
+        request.register_key = register_key
+
+        return await self._unary_unary(
+            "/flow.execution.ExecutionAPI/GetRegisterAtBlockID",
+            request,
+            GetRegisterAtBlockIDResponse,
+        )
+
+    async def get_latest_block_header(
+        self, *, is_sealed: bool = False
+    ) -> BlockHeaderResponse:
+        """
+        GetLatestBlockHeader gets the latest sealed or unsealed block header.
+        """
+
+        request = GetLatestBlockHeaderRequest()
+        request.is_sealed = is_sealed
+
+        return await self._unary_unary(
+            "/flow.execution.ExecutionAPI/GetLatestBlockHeader",
+            request,
+            BlockHeaderResponse,
+        )
+
+    async def get_block_header_by_i_d(self, *, id: bytes = b"") -> BlockHeaderResponse:
+        """GetBlockHeaderByID gets a block header by ID."""
+
+        request = GetBlockHeaderByIDRequest()
+        request.id = id
+
+        return await self._unary_unary(
+            "/flow.execution.ExecutionAPI/GetBlockHeaderByID",
+            request,
+            BlockHeaderResponse,
         )

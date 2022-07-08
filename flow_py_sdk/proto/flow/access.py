@@ -6,8 +6,9 @@ from datetime import datetime
 from typing import List, Optional
 
 import betterproto
+import grpclib
 
-from ..flow import entities
+from .flow import entities
 
 
 @dataclass
@@ -43,16 +44,19 @@ class BlockHeaderResponse(betterproto.Message):
 @dataclass
 class GetLatestBlockRequest(betterproto.Message):
     is_sealed: bool = betterproto.bool_field(1)
+    full_block_response: bool = betterproto.bool_field(2)
 
 
 @dataclass
 class GetBlockByIDRequest(betterproto.Message):
     id: bytes = betterproto.bytes_field(1)
+    full_block_response: bool = betterproto.bool_field(2)
 
 
 @dataclass
 class GetBlockByHeightRequest(betterproto.Message):
     height: int = betterproto.uint64_field(1)
+    full_block_response: bool = betterproto.bool_field(2)
 
 
 @dataclass
@@ -86,6 +90,29 @@ class GetTransactionRequest(betterproto.Message):
 
 
 @dataclass
+class GetTransactionByIndexRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+    index: int = betterproto.uint32_field(2)
+
+
+@dataclass
+class GetTransactionsByBlockIDRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class TransactionResultsResponse(betterproto.Message):
+    transaction_results: List["TransactionResultResponse"] = betterproto.message_field(
+        1
+    )
+
+
+@dataclass
+class TransactionsResponse(betterproto.Message):
+    transactions: List[entities.Transaction] = betterproto.message_field(1)
+
+
+@dataclass
 class TransactionResponse(betterproto.Message):
     transaction: entities.Transaction = betterproto.message_field(1)
 
@@ -96,6 +123,10 @@ class TransactionResultResponse(betterproto.Message):
     status_code: int = betterproto.uint32_field(2)
     error_message: str = betterproto.string_field(3)
     events: List[entities.Event] = betterproto.message_field(4)
+    block_id: bytes = betterproto.bytes_field(5)
+    transaction_id: bytes = betterproto.bytes_field(6)
+    collection_id: bytes = betterproto.bytes_field(7)
+    block_height: int = betterproto.uint64_field(8)
 
 
 @dataclass
@@ -185,6 +216,26 @@ class GetNetworkParametersResponse(betterproto.Message):
     chain_id: str = betterproto.string_field(1)
 
 
+@dataclass
+class GetLatestProtocolStateSnapshotRequest(betterproto.Message):
+    pass
+
+
+@dataclass
+class ProtocolStateSnapshotResponse(betterproto.Message):
+    serialized_snapshot: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class GetExecutionResultForBlockIDRequest(betterproto.Message):
+    block_id: bytes = betterproto.bytes_field(1)
+
+
+@dataclass
+class ExecutionResultForBlockIDResponse(betterproto.Message):
+    execution_result: entities.ExecutionResult = betterproto.message_field(1)
+
+
 class AccessAPIStub(betterproto.ServiceStub):
     """AccessAPI is the public-facing API provided by access nodes."""
 
@@ -241,7 +292,9 @@ class AccessAPIStub(betterproto.ServiceStub):
             BlockHeaderResponse,
         )
 
-    async def get_latest_block(self, *, is_sealed: bool = False) -> BlockResponse:
+    async def get_latest_block(
+        self, *, is_sealed: bool = False, full_block_response: bool = False
+    ) -> BlockResponse:
         """
         GetLatestBlock gets the full payload of the latest sealed or unsealed
         block.
@@ -249,6 +302,7 @@ class AccessAPIStub(betterproto.ServiceStub):
 
         request = GetLatestBlockRequest()
         request.is_sealed = is_sealed
+        request.full_block_response = full_block_response
 
         return await self._unary_unary(
             "/flow.access.AccessAPI/GetLatestBlock",
@@ -256,11 +310,14 @@ class AccessAPIStub(betterproto.ServiceStub):
             BlockResponse,
         )
 
-    async def get_block_by_i_d(self, *, id: bytes = b"") -> BlockResponse:
+    async def get_block_by_i_d(
+        self, *, id: bytes = b"", full_block_response: bool = False
+    ) -> BlockResponse:
         """GetBlockByID gets a full block by ID."""
 
         request = GetBlockByIDRequest()
         request.id = id
+        request.full_block_response = full_block_response
 
         return await self._unary_unary(
             "/flow.access.AccessAPI/GetBlockByID",
@@ -268,11 +325,14 @@ class AccessAPIStub(betterproto.ServiceStub):
             BlockResponse,
         )
 
-    async def get_block_by_height(self, *, height: int = 0) -> BlockResponse:
+    async def get_block_by_height(
+        self, *, height: int = 0, full_block_response: bool = False
+    ) -> BlockResponse:
         """GetBlockByHeight gets a full block by height."""
 
         request = GetBlockByHeightRequest()
         request.height = height
+        request.full_block_response = full_block_response
 
         return await self._unary_unary(
             "/flow.access.AccessAPI/GetBlockByHeight",
@@ -331,6 +391,58 @@ class AccessAPIStub(betterproto.ServiceStub):
             "/flow.access.AccessAPI/GetTransactionResult",
             request,
             TransactionResultResponse,
+        )
+
+    async def get_transaction_result_by_index(
+        self, *, block_id: bytes = b"", index: int = 0
+    ) -> TransactionResultResponse:
+        """
+        GetTransactionResultByIndex gets the result of a transaction at a
+        specified block and index
+        """
+
+        request = GetTransactionByIndexRequest()
+        request.block_id = block_id
+        request.index = index
+
+        return await self._unary_unary(
+            "/flow.access.AccessAPI/GetTransactionResultByIndex",
+            request,
+            TransactionResultResponse,
+        )
+
+    async def get_transaction_results_by_block_i_d(
+        self, *, block_id: bytes = b""
+    ) -> TransactionResultsResponse:
+        """
+        GetTransactionResultsByBlockID gets all the transaction results for a
+        specified block
+        """
+
+        request = GetTransactionsByBlockIDRequest()
+        request.block_id = block_id
+
+        return await self._unary_unary(
+            "/flow.access.AccessAPI/GetTransactionResultsByBlockID",
+            request,
+            TransactionResultsResponse,
+        )
+
+    async def get_transactions_by_block_i_d(
+        self, *, block_id: bytes = b""
+    ) -> TransactionsResponse:
+        """
+        GetTransactionsByBlockID gets all the transactions for a specified
+        block
+        """
+
+        request = GetTransactionsByBlockIDRequest()
+        request.block_id = block_id
+
+        return await self._unary_unary(
+            "/flow.access.AccessAPI/GetTransactionsByBlockID",
+            request,
+            TransactionsResponse,
         )
 
     async def get_account(self, *, address: bytes = b"") -> GetAccountResponse:
@@ -486,4 +598,37 @@ class AccessAPIStub(betterproto.ServiceStub):
             "/flow.access.AccessAPI/GetNetworkParameters",
             request,
             GetNetworkParametersResponse,
+        )
+
+    async def get_latest_protocol_state_snapshot(self) -> ProtocolStateSnapshotResponse:
+        """
+        GetLatestProtocolStateSnapshot retrieves the latest sealed protocol
+        state snapshot. Used by Flow nodes joining the network to bootstrap a
+        space-efficient local state.
+        """
+
+        request = GetLatestProtocolStateSnapshotRequest()
+
+        return await self._unary_unary(
+            "/flow.access.AccessAPI/GetLatestProtocolStateSnapshot",
+            request,
+            ProtocolStateSnapshotResponse,
+        )
+
+    async def get_execution_result_for_block_i_d(
+        self, *, block_id: bytes = b""
+    ) -> ExecutionResultForBlockIDResponse:
+        """
+        GetExecutionResultForBlockID returns Execution Result for a given
+        block. At present, Access Node might not have execution results for
+        every block and as usual, until sealed, this data can change
+        """
+
+        request = GetExecutionResultForBlockIDRequest()
+        request.block_id = block_id
+
+        return await self._unary_unary(
+            "/flow.access.AccessAPI/GetExecutionResultForBlockID",
+            request,
+            ExecutionResultForBlockIDResponse,
         )
